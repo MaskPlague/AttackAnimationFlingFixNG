@@ -104,13 +104,13 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
 
     SetupLog();
 
-    logger::info("Animation Fling Fix Plugin Starting");
+    logger::info("Attack Animation Fling Fix NG Plugin Starting");
 
     auto *messaging = SKSE::GetMessagingInterface();
     messaging->RegisterListener("SKSE", MessageHandler);
 
     spdlog::set_level(spdlog::level::info);
-    logger::info("Animation Fling Fix Plugin Loaded");
+    logger::info("Attack Animation Fling Fix NG Plugin Loaded");
 
     return true;
 }
