@@ -79,17 +79,17 @@ public:
         logger::trace("Payload: {}", event->payload);
         logger::trace("Tag: {}\n", event->tag);
         // MCO_AttackInitiate and BFCO_
-        if (!isAttacking && event->tag == "PowerAttack_Start_end")
+        if (!isAttacking && (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" || event->tag == "RollTrigger"))
         {
             isAttacking = true;
             flingHappened = false;
             LoopSlowPlayerVeocity();
-            logger::debug("Attack Started");
+            logger::debug("Animation Started");
         }
-        else if (isAttacking && event->tag == "attackStop")
+        else if (isAttacking && (event->tag == "attackStop" || event->tag == "MCO_DodgeOpen" || event->tag == "RollStop"))
         {
             isAttacking = false;
-            logger::debug("Attack Finished");
+            logger::debug("Animation Finished");
         }
 
         return RE::BSEventNotifyControl::kContinue;
