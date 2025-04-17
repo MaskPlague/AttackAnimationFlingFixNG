@@ -19,7 +19,6 @@ void SetupLog()
 bool isAttacking = false;
 bool flingHappened = false;
 bool eventSinkStarted = false;
-bool loopStarted = false;
 
 void SlowPlayerVelocity()
 {
@@ -63,7 +62,7 @@ void LoopSlowPlayerVeocity()
     std::thread([&]
                 {while (isAttacking && !flingHappened) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(33));
-                    SKSE::GetTaskInterface()->AddTask([] {SlowPlayerVelocity();});
+                    SKSE::GetTaskInterface()->AddTask([&] {SlowPlayerVelocity();});
             } })
         .detach();
 }
@@ -84,15 +83,10 @@ public:
         {
             isAttacking = true;
             flingHappened = false;
-            loopStarted = false;
+            LoopSlowPlayerVeocity();
             logger::debug("Attack Started");
         }
-        if (isAttacking && !loopStarted)
-        {
-            LoopSlowPlayerVeocity();
-            loopStarted = true;
-        }
-        if (isAttacking && event->tag == "attackStop")
+        else if (isAttacking && event->tag == "attackStop")
         {
             isAttacking = false;
             logger::debug("Attack Finished");
@@ -104,7 +98,6 @@ public:
 
 void OnPostLoadGame()
 {
-
     auto *player = RE::PlayerCharacter::GetSingleton();
     if (player)
     {
