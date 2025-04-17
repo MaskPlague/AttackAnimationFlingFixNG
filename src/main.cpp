@@ -16,39 +16,56 @@ void SetupLog()
     spdlog::flush_on(spdlog::level::trace);
 }
 
+bool isAttacking = false;
+bool flingHappened = false;
+bool eventSinkStarted = false;
+bool loopStarted = false;
+
 void SlowPlayerVelocity()
 {
     auto *player = RE::PlayerCharacter::GetSingleton();
-    if (!player || !player->IsInMidair() || !player->IsAttacking())
+    if (!player || !player->IsInMidair())
         return;
 
     RE::NiPoint3 velocity;
     player->GetLinearVelocity(velocity);
 
-    logger::debug("Velocity at HitFrame: X{}, Y{}", velocity.x, velocity.y);
+    logger::trace("Velocity: X{}, Y{}", velocity.x, velocity.y);
     float magnitude = sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y));
-    logger::debug("           Magnitude: {}", magnitude);
+    logger::trace("Magnitude: {}", magnitude);
 
-    if (magnitude > 600)
+    if (magnitude > 500 && !flingHappened)
     {
         if (auto *controller = player->GetCharController(); controller)
         {
+            flingHappened = true;
             logger::debug("In air and velocity: x{:.2f}, y{:.2f}, z{:.2f}", velocity.x, velocity.y, velocity.z);
             RE::NiPoint3 impulse = RE::NiPoint3();
             if (magnitude > 1300)
-                impulse = RE::NiPoint3(velocity.x * 0.01f, velocity.y * 0.01f, velocity.z * 0.5f);
+                impulse = RE::NiPoint3(velocity.x * 0.01f, velocity.y * 0.01f, velocity.z * 0.2f);
             else if (magnitude > 1000)
-                impulse = RE::NiPoint3(velocity.x * 0.015f, velocity.y * 0.015f, velocity.z * 0.5f);
+                impulse = RE::NiPoint3(velocity.x * 0.015f, velocity.y * 0.015f, velocity.z * 0.2f);
             else if (magnitude > 800)
-                impulse = RE::NiPoint3(velocity.x * 0.025f, velocity.y * 0.025f, velocity.z * 0.5f);
+                impulse = RE::NiPoint3(velocity.x * 0.025f, velocity.y * 0.025f, velocity.z * 0.2f);
             else
-                impulse = RE::NiPoint3(velocity.x * 0.03f, velocity.y * 0.03f, velocity.z * 0.5f);
+                impulse = RE::NiPoint3(velocity.x * 0.03f, velocity.y * 0.03f, velocity.z * 0.2f);
 
             controller->SetLinearVelocityImpl(impulse);
             logger::debug("Impulse set to: x{:.2f}, y{:.2f}, z{:.2f}", impulse.x, impulse.y, impulse.z);
             logger::info("Animation Fling Prevented");
         }
     }
+}
+
+void LoopSlowPlayerVeocity()
+{
+    logger::debug("Loop starting");
+    std::thread([&]
+                {while (isAttacking && !flingHappened) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(33));
+                    SKSE::GetTaskInterface()->AddTask([] {SlowPlayerVelocity();});
+            } })
+        .detach();
 }
 
 class AttackAnimationGraphEventSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
@@ -60,34 +77,51 @@ public:
         {
             return RE::BSEventNotifyControl::kStop;
         }
+        logger::trace("Payload: {}", event->payload);
         logger::trace("Tag: {}\n", event->tag);
-
-        if (event->tag == "HitFrame")
+        // MCO_AttackInitiate and BFCO_
+        if (!isAttacking && event->tag == "PowerAttack_Start_end")
         {
-            logger::debug("Hiframe Event detected");
-            SlowPlayerVelocity();
+            isAttacking = true;
+            flingHappened = false;
+            loopStarted = false;
+            logger::debug("Attack Started");
         }
+        if (isAttacking && !loopStarted)
+        {
+            LoopSlowPlayerVeocity();
+            loopStarted = true;
+        }
+        if (isAttacking && event->tag == "attackStop")
+        {
+            isAttacking = false;
+            logger::debug("Attack Finished");
+        }
+
         return RE::BSEventNotifyControl::kContinue;
     }
 };
 
 void OnPostLoadGame()
 {
-    logger::info("Creating HitFrame Event Sink");
+
     auto *player = RE::PlayerCharacter::GetSingleton();
     if (player)
     {
+        logger::info("Creating Event Sink");
         try
         {
             auto *sink = new AttackAnimationGraphEventSink();
             player->AddAnimationGraphEventSink(sink);
+            logger::info("Event Sink Created");
         }
-        catch (const std::runtime_error &error)
+        catch (...)
         {
-            logger::info("Failed to Create HitFrame Event Sink with Error: {}", error.what());
+            logger::info("Failed to Create Event Sink");
         }
     }
-    logger::info("HitFrame Event Sink Created");
+    else
+        logger::info("Failed to Create Event Sink as Player Could not be Retrieved");
 }
 
 void MessageHandler(SKSE::MessagingInterface::Message *msg)
@@ -103,13 +137,13 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     SKSE::Init(skse);
 
     SetupLog();
+    spdlog::set_level(spdlog::level::info);
 
     logger::info("Attack Animation Fling Fix NG Plugin Starting");
 
     auto *messaging = SKSE::GetMessagingInterface();
     messaging->RegisterListener("SKSE", MessageHandler);
 
-    spdlog::set_level(spdlog::level::info);
     logger::info("Attack Animation Fling Fix NG Plugin Loaded");
 
     return true;
