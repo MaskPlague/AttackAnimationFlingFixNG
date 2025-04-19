@@ -18,7 +18,6 @@ void SetupLog()
 
 bool isAttacking = false;
 bool flingHappened = false;
-bool eventSinkStarted = false;
 
 void SlowPlayerVelocity()
 {
@@ -86,7 +85,7 @@ public:
             LoopSlowPlayerVeocity();
             logger::debug("Attack Started");
         }
-        else if (isAttacking && (event->tag == "attackStop" || event->tag == "MCO_DodgeOpen" || event->tag == "RollStop"))
+        else if (isAttacking && (event->tag == "attackStop" || event->tag == "MCO_DodgeOpen" || event->tag == "RollStop" || event->payload == "$DMCO_Reset"))
         {
             isAttacking = false;
             logger::debug("Attack Finished");
@@ -130,7 +129,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     SKSE::Init(skse);
 
     SetupLog();
-    spdlog::set_level(spdlog::level::trace);
+    spdlog::set_level(spdlog::level::info);
 
     logger::info("Attack Animation Fling Fix NG Plugin Starting");
 
