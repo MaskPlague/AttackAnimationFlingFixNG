@@ -77,15 +77,25 @@ public:
         }
         logger::trace("Payload: {}", event->payload);
         logger::trace("Tag: {}\n", event->tag);
-
-        if (!isAttacking && (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" || event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart"))
+        static int type = 0;
+        if (!isAttacking && (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
+                             event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart"))
         {
             isAttacking = true;
             flingHappened = false;
             LoopSlowPlayerVeocity();
             logger::debug("Attack Started");
+            if (event->tag == "PowerAttack_Start_end")
+                type = 1;
+            else if (event->tag == "MCO_DodgeInitiate")
+                type = 2;
+            else if (event->tag == "RollTrigger")
+                type = 3;
+            else if (event->tag == "TKDR_DodgeStart")
+                type = 4;
         }
-        else if (isAttacking && (event->tag == "attackStop" || event->payload == "$DMCO_Reset" || event->tag == "RollStop" || event->tag == "TKDR_DodgeEnd"))
+        else if (isAttacking && ((type == 1 && event->tag == "attackStop") || (type == 2 && event->payload == "$DMCO_Reset") ||
+                                 (type == 3 && event->tag == "RollStop") || (type == 4 && event->tag == "TKDR_DodgeEnd")))
         {
             isAttacking = false;
             logger::debug("Attack Finished");
