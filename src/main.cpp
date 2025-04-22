@@ -78,14 +78,14 @@ public:
         logger::trace("Payload: {}", event->payload);
         logger::trace("Tag: {}\n", event->tag);
 
-        if (!isAttacking && (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" || event->tag == "RollTrigger"))
+        if (!isAttacking && (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" || event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart"))
         {
             isAttacking = true;
             flingHappened = false;
             LoopSlowPlayerVeocity();
             logger::debug("Attack Started");
         }
-        else if (isAttacking && (event->tag == "attackStop" || event->payload == "$DMCO_Reset" || event->tag == "RollStop"))
+        else if (isAttacking && (event->tag == "attackStop" || event->payload == "$DMCO_Reset" || event->tag == "RollStop" || event->tag == "TKDR_DodgeEnd"))
         {
             isAttacking = false;
             logger::debug("Attack Finished");
