@@ -118,10 +118,11 @@ void OnPostLoadGame()
 
 void MessageHandler(SKSE::MessagingInterface::Message *msg)
 {
-    if (msg->type == SKSE::MessagingInterface::kPostLoadGame)
-    {
-        OnPostLoadGame();
-    }
+    if (msg->type != SKSE::MessagingInterface::kPostLoadGame)
+        return;
+    if (!bool(msg->data))
+        return;
+    OnPostLoadGame();
 }
 
 SKSEPluginLoad(const SKSE::LoadInterface *skse)
