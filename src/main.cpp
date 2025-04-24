@@ -78,8 +78,8 @@ public:
         logger::trace("Payload: {}", event->payload);
         logger::trace("Tag: {}\n", event->tag);
         static int type = 0;
-        if (!isAttacking && (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
-                             event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart"))
+        if (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
+            event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart")
         {
             isAttacking = true;
             flingHappened = false;
