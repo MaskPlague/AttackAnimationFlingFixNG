@@ -1,4 +1,4 @@
-#include <spdlog/sinks/basic_file_sink.h>
+
 
 namespace logger = SKSE::log;
 
@@ -16,29 +16,41 @@ void SetupLog()
     spdlog::flush_on(spdlog::level::trace);
 }
 
-bool isAttacking = false;
-bool flingHappened = false;
-
-void SlowPlayerVelocity()
+struct ActorState
 {
-    auto *player = RE::PlayerCharacter::GetSingleton();
-    if (!player || !player->IsInMidair())
+    bool isAttacking = false;
+    bool flingHappened = false;
+    bool isLooping = false;
+    int animationType = 0;
+};
+
+inline std::unordered_map<RE::FormID, ActorState> g_actorStates;
+
+ActorState &GetState(RE::Actor *actor)
+{
+    return g_actorStates[actor->GetFormID()];
+}
+
+void SlowActorVelocity(RE::Actor *actor)
+{
+    auto &state = GetState(actor);
+    if (!actor || !actor->IsInMidair() || state.flingHappened)
         return;
 
     RE::NiPoint3 velocity;
-    player->GetLinearVelocity(velocity);
+    actor->GetLinearVelocity(velocity);
 
     logger::trace("Velocity: X{}, Y{}", velocity.x, velocity.y);
     float magnitude = sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y));
     logger::trace("Magnitude: {}", magnitude);
 
-    if (magnitude > 500 && !flingHappened)
+    if (magnitude > 500)
     {
-        if (auto *controller = player->GetCharController(); controller)
+        if (auto *controller = actor->GetCharController(); controller)
         {
-            flingHappened = true;
+            state.flingHappened = true;
             logger::debug("In air and velocity: x{:.2f}, y{:.2f}, z{:.2f}", velocity.x, velocity.y, velocity.z);
-            RE::NiPoint3 impulse = RE::NiPoint3();
+            RE::NiPoint3 impulse;
             if (magnitude > 1300)
                 impulse = RE::NiPoint3(velocity.x * 0.01f, velocity.y * 0.01f, velocity.z * 0.2f);
             else if (magnitude > 1000)
@@ -50,18 +62,46 @@ void SlowPlayerVelocity()
 
             controller->SetLinearVelocityImpl(impulse);
             logger::debug("Impulse set to: x{:.2f}, y{:.2f}, z{:.2f}", impulse.x, impulse.y, impulse.z);
-            logger::info("Animation Fling Prevented");
+            logger::info("Animation Fling Prevented for {}", actor->GetName());
         }
     }
 }
-
-void LoopSlowPlayerVeocity()
+bool IsGameWindowFocused()
 {
+    static const HWND gameWindow = ::FindWindow(nullptr, L"Skyrim Special Edition");
+    return ::GetForegroundWindow() == gameWindow;
+}
+
+void LoopSlowActorVeocity(RE::Actor *actor)
+{
+    if (!actor)
+        return;
+
     logger::debug("Loop starting");
-    std::thread([&]
-                {while (isAttacking && !flingHappened) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(33));
-                    SKSE::GetTaskInterface()->AddTask([&] {SlowPlayerVelocity();});
+    std::thread([actor]()
+                {
+            RE::FormID formID = actor->GetFormID();
+            
+            while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(33));
+            if (!IsGameWindowFocused())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+            auto it = g_actorStates.find(formID);
+            if (it == g_actorStates.end())
+            {
+                logger::debug("Actor state no longer exists, ending LoopEdgeCheck");
+                break;
+            }
+
+            auto &state = it->second;
+            if (!(state.isAttacking || !state.flingHappened))
+            {
+                break;
+            }
+            SKSE::GetTaskInterface() -> AddTask([actor](){SlowActorVelocity(actor);});
             } })
         .detach();
 }
@@ -75,55 +115,106 @@ public:
         {
             return RE::BSEventNotifyControl::kStop;
         }
-        logger::trace("Payload: {}", event->payload);
-        logger::trace("Tag: {}\n", event->tag);
-        static int type = 0;
+        // Cast away constness
+        auto refr = const_cast<RE::TESObjectREFR *>(event->holder);
+        auto actor = refr->As<RE::Actor>();
+        if (!actor)
+        {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+        auto holderName = event->holder->GetName();
+        auto &state = GetState(actor);
+        logger::trace("{} Payload: {}", holderName, event->payload);
+        logger::trace("{} Tag: {}", holderName, event->tag);
         if (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
             event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart")
         {
-            isAttacking = true;
-            flingHappened = false;
-            LoopSlowPlayerVeocity();
-            logger::debug("Attack Started");
+            state.isAttacking = true;
+            state.flingHappened = false;
+            if (!state.isLooping)
+                LoopSlowActorVeocity(actor);
+            state.isLooping = true;
+            logger::debug("Attack Started for {}", holderName);
             if (event->tag == "PowerAttack_Start_end")
-                type = 1;
+                state.animationType = 1;
             else if (event->tag == "MCO_DodgeInitiate")
-                type = 2;
+                state.animationType = 2;
             else if (event->tag == "RollTrigger")
-                type = 3;
+                state.animationType = 3;
             else if (event->tag == "TKDR_DodgeStart")
-                type = 4;
+                state.animationType = 4;
+            else if (event->tag == "MCO_DisableSecondDodge")
+                state.animationType = 5;
         }
-        else if (isAttacking && ((type == 1 && event->tag == "attackStop") || (type == 2 && event->payload == "$DMCO_Reset") ||
-                                 (type == 3 && event->tag == "RollStop") || (type == 4 && event->tag == "TKDR_DodgeEnd")))
+        else if (state.isAttacking && ((state.animationType == 1 && event->tag == "attackStop") || (state.animationType == 2 && event->payload == "$DMCO_Reset") ||
+                                       (state.animationType == 3 && event->tag == "RollStop") || (state.animationType == 4 && event->tag == "TKDR_DodgeEnd") ||
+                                       (state.animationType == 5 && event->tag == "EnableBumper")))
         {
-            isAttacking = false;
-            logger::debug("Attack Finished");
+            state.animationType = 0;
+            state.isAttacking = false;
+            state.isLooping = false;
+            logger::debug("Attack Finished for {}", holderName);
         }
 
         return RE::BSEventNotifyControl::kContinue;
     }
+    static AttackAnimationGraphEventSink *GetSingleton()
+    {
+        static AttackAnimationGraphEventSink singleton;
+        return &singleton;
+    }
 };
 
+class CombatEventSink : public RE::BSTEventSink<RE::TESCombatEvent>
+{
+public:
+    virtual RE::BSEventNotifyControl ProcessEvent(
+        const RE::TESCombatEvent *a_event,
+        RE::BSTEventSource<RE::TESCombatEvent> *) override
+    {
+        if (!a_event)
+        {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+        auto actor = a_event->actor->As<RE::Actor>();
+        if (!actor || actor->IsPlayerRef())
+            return RE::BSEventNotifyControl::kContinue;
+        auto formID = actor->GetFormID();
+        auto combatState = a_event->newState;
+        if (combatState == RE::ACTOR_COMBAT_STATE::kCombat)
+        {
+            g_actorStates[formID];
+            actor->AddAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
+            logger::debug("Tracking new combat actor: {}", actor->GetName());
+        }
+        else if (combatState == RE::ACTOR_COMBAT_STATE::kNone)
+        {
+            g_actorStates.erase(formID);
+            actor->RemoveAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
+            logger::debug("Stopped tracking actor: {}", actor->GetName());
+        }
+
+        return RE::BSEventNotifyControl::kContinue;
+    }
+    static CombatEventSink *GetSingleton()
+    {
+        static CombatEventSink singleton;
+        return &singleton;
+    }
+};
 void OnPostLoadGame()
 {
-    auto *player = RE::PlayerCharacter::GetSingleton();
-    if (player)
+    logger::info("Creating Event Sink(s)");
+    try
     {
-        logger::info("Creating Event Sink");
-        try
-        {
-            auto *sink = new AttackAnimationGraphEventSink();
-            player->AddAnimationGraphEventSink(sink);
-            logger::info("Event Sink Created");
-        }
-        catch (...)
-        {
-            logger::info("Failed to Create Event Sink");
-        }
+        RE::PlayerCharacter::GetSingleton()->AddAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
+        RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(CombatEventSink::GetSingleton());
+        logger::info("Event Sink(s) Created");
     }
-    else
-        logger::info("Failed to Create Event Sink as Player Could not be Retrieved");
+    catch (...)
+    {
+        logger::info("Failed to Create Event Sink(s)");
+    }
 }
 
 void MessageHandler(SKSE::MessagingInterface::Message *msg)
@@ -135,7 +226,7 @@ void MessageHandler(SKSE::MessagingInterface::Message *msg)
     OnPostLoadGame();
 }
 
-SKSEPluginLoad(const SKSE::LoadInterface *skse)
+extern "C" DLLEXPORT bool SKSEPlugin_Load(const SKSE::LoadInterface *skse)
 {
     SKSE::Init(skse);
 
