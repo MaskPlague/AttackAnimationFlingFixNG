@@ -37,7 +37,14 @@ void CleanupActors()
     {
         auto actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
         if (!actor || actor->IsDead() || actor->IsDeleted() || !actor->IsInCombat() || actor->IsDisabled())
+        {
+            if (actor->IsPlayerRef())
+            {
+                ++it;
+                continue;
+            }
             it = g_actorStates.erase(it);
+        }
         else
             ++it;
     }
