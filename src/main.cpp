@@ -31,6 +31,18 @@ ActorState &GetState(RE::Actor *actor)
     return g_actorStates[actor->GetFormID()];
 }
 
+void CleanupActors()
+{
+    for (auto it = g_actorStates.begin(); it != g_actorStates.end();)
+    {
+        auto actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
+        if (!actor || actor->IsDead() || actor->IsDeleted() || !actor->IsInCombat() || actor->IsDisabled())
+            it = g_actorStates.erase(it);
+        else
+            ++it;
+    }
+}
+
 void SlowActorVelocity(RE::Actor *actor)
 {
     auto &state = GetState(actor);
@@ -177,8 +189,13 @@ public:
             return RE::BSEventNotifyControl::kContinue;
         }
         auto actor = a_event->actor->As<RE::Actor>();
-        if (!actor || actor->IsPlayerRef())
+        if (!actor || actor->IsPlayerRef() || !actor->GetActorBase() || !actor->GetActorBase()->GetRace())
             return RE::BSEventNotifyControl::kContinue;
+        auto race = actor->GetActorBase()->GetRace();
+        if (!race->HasKeywordString("ActorTypeNPC"))
+        {
+            return RE::BSEventNotifyControl::kContinue;
+        }
         auto formID = actor->GetFormID();
         auto combatState = a_event->newState;
         if (combatState == RE::ACTOR_COMBAT_STATE::kCombat)
@@ -193,7 +210,7 @@ public:
             actor->RemoveAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
             logger::debug("Stopped tracking actor: {}", actor->GetName());
         }
-
+        CleanupActors();
         return RE::BSEventNotifyControl::kContinue;
     }
     static CombatEventSink *GetSingleton()
@@ -207,6 +224,7 @@ void OnPostLoadGame()
     logger::info("Creating Event Sink(s)");
     try
     {
+        g_actorStates.clear();
         RE::PlayerCharacter::GetSingleton()->AddAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(CombatEventSink::GetSingleton());
         logger::info("Event Sink(s) Created");
