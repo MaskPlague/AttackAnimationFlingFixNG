@@ -31,6 +31,14 @@ ActorState &GetState(RE::Actor *actor)
     return g_actorStates[actor->GetFormID()];
 }
 
+ActorState *TryGetState(RE::Actor *actor)
+{
+    if (!actor)
+        return nullptr;
+    auto it = g_actorStates.find(actor->GetFormID());
+    return it != g_actorStates.end() ? &it->second : nullptr;
+}
+
 void CleanupActors()
 {
     for (auto it = g_actorStates.begin(); it != g_actorStates.end();)
@@ -52,6 +60,9 @@ void CleanupActors()
 
 void SlowActorVelocity(RE::Actor *actor)
 {
+    ActorState *stateCheck = TryGetState(actor);
+    if (!stateCheck)
+        return;
     auto &state = GetState(actor);
     if (!actor || !actor->IsInMidair() || state.flingHappened)
         return;
@@ -142,6 +153,9 @@ public:
             return RE::BSEventNotifyControl::kContinue;
         }
         auto holderName = event->holder->GetName();
+        ActorState *stateCheck = TryGetState(actor);
+        if (!stateCheck)
+            return RE::BSEventNotifyControl::kContinue;
         auto &state = GetState(actor);
         logger::trace("{} Payload: {}", holderName, event->payload);
         logger::trace("{} Tag: {}", holderName, event->tag);
