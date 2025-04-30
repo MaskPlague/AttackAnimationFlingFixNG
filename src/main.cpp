@@ -39,25 +39,6 @@ ActorState *TryGetState(RE::Actor *actor)
     return it != g_actorStates.end() ? &it->second : nullptr;
 }
 
-void CleanupActors()
-{
-    for (auto it = g_actorStates.begin(); it != g_actorStates.end();)
-    {
-        auto actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
-        if (!actor || actor->IsDead() || actor->IsDeleted() || !actor->IsInCombat() || actor->IsDisabled())
-        {
-            if (actor->IsPlayerRef())
-            {
-                ++it;
-                continue;
-            }
-            it = g_actorStates.erase(it);
-        }
-        else
-            ++it;
-    }
-}
-
 void SlowActorVelocity(RE::Actor *actor)
 {
     ActorState *stateCheck = TryGetState(actor);
@@ -108,31 +89,36 @@ void LoopSlowActorVeocity(RE::Actor *actor)
         return;
 
     logger::debug("Loop starting");
-    std::thread([actor]()
+    std::thread([formID = actor->GetFormID()]()
                 {
-            RE::FormID formID = actor->GetFormID();
-            
-            while (true) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(33));
-            if (!IsGameWindowFocused())
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                continue;
-            }
-            auto it = g_actorStates.find(formID);
-            if (it == g_actorStates.end())
-            {
-                logger::debug("Actor state no longer exists, ending LoopEdgeCheck");
-                break;
-            }
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
 
-            auto &state = it->second;
-            if (!(state.isAttacking || !state.flingHappened))
-            {
-                break;
-            }
-            SKSE::GetTaskInterface() -> AddTask([actor](){SlowActorVelocity(actor);});
-            } })
+        if (!IsGameWindowFocused()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        auto it = g_actorStates.find(formID);
+        if (it == g_actorStates.end()) {
+            logger::debug("Actor state no longer exists, ending LoopEdgeCheck");
+            break;
+        }
+
+        auto actorPtr = RE::TESForm::LookupByID<RE::Actor>(formID);
+        if (!actorPtr)
+            break;
+
+        auto& state = it->second;
+        if (!(state.isAttacking || !state.flingHappened)) {
+            break;
+        }
+
+        SKSE::GetTaskInterface()->AddTask([formID]() {
+            if (auto actor = RE::TESForm::LookupByID<RE::Actor>(formID))
+                SlowActorVelocity(actor);
+        });
+    } })
         .detach();
 }
 
@@ -160,7 +146,8 @@ public:
         logger::trace("{} Payload: {}", holderName, event->payload);
         logger::trace("{} Tag: {}", holderName, event->tag);
         if (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
-            event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart")
+            event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart" ||
+            event->tag == "MCO_DisableSecondDodge")
         {
             state.isAttacking = true;
             state.flingHappened = false;
@@ -198,6 +185,26 @@ public:
     }
 };
 
+void CleanupActors()
+{
+    for (auto it = g_actorStates.begin(); it != g_actorStates.end();)
+    {
+        auto actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
+        if (!actor || actor->IsDead() || actor->IsDeleted() || !actor->IsInCombat() || actor->IsDisabled())
+        {
+            if (actor->IsPlayerRef())
+            {
+                ++it;
+                continue;
+            }
+            actor->RemoveAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
+            it = g_actorStates.erase(it);
+        }
+        else
+            ++it;
+    }
+}
+
 class CombatEventSink : public RE::BSTEventSink<RE::TESCombatEvent>
 {
 public:
@@ -219,13 +226,14 @@ public:
         }
         auto formID = actor->GetFormID();
         auto combatState = a_event->newState;
-        if (combatState == RE::ACTOR_COMBAT_STATE::kCombat)
+        if (combatState == RE::ACTOR_COMBAT_STATE::kCombat && !g_actorStates.contains(formID))
         {
             g_actorStates[formID];
+
             actor->AddAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
             logger::debug("Tracking new combat actor: {}", actor->GetName());
         }
-        else if (combatState == RE::ACTOR_COMBAT_STATE::kNone)
+        else if (combatState == RE::ACTOR_COMBAT_STATE::kNone && g_actorStates.contains(formID))
         {
             g_actorStates.erase(formID);
             actor->RemoveAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
@@ -246,7 +254,9 @@ void OnPostLoadGame()
     try
     {
         g_actorStates.clear();
-        RE::PlayerCharacter::GetSingleton()->AddAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
+        auto player = RE::PlayerCharacter::GetSingleton();
+        g_actorStates[player->GetFormID()];
+        player->AddAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(CombatEventSink::GetSingleton());
         logger::info("Event Sink(s) Created");
     }
