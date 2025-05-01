@@ -144,7 +144,7 @@ void LoopSlowActorVelocity(RE::Actor *actor)
             break;
 
         auto& state = it->second;
-        if (!state.isAttacking || state.flingHappened) {
+        if (!state.isAttacking) {
             break;
         }
 
