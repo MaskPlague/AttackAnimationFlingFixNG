@@ -114,7 +114,7 @@ bool IsGameWindowFocused()
     return ::GetForegroundWindow() == gameWindow;
 }
 
-void LoopSlowActorVeocity(RE::Actor *actor)
+void LoopSlowActorVelocity(RE::Actor *actor)
 {
     if (!actor)
         return;
