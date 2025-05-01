@@ -45,12 +45,18 @@ void SlowActorVelocity(RE::Actor *actor)
     if (!stateCheck)
         return;
     auto &state = GetState(actor);
-    if (!actor || !actor->IsInMidair() || state.flingHappened)
+    if (!actor)
         return;
-
+    if (!actor->IsInMidair() && state.flingHappened)
+    {
+        state.flingHappened = false;
+        return;
+    }
+    if (!actor->IsInMidair())
+        return;
+    state.positions.push_back(actor->GetPosition());
     RE::NiPoint3 velocity;
     actor->GetLinearVelocity(velocity);
-
     logger::trace("Velocity: X{}, Y{}", velocity.x, velocity.y);
     float magnitude = sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y));
     logger::trace("Magnitude: {}", magnitude);
@@ -110,7 +116,7 @@ void LoopSlowActorVeocity(RE::Actor *actor)
             break;
 
         auto& state = it->second;
-        if (!(state.isAttacking || !state.flingHappened)) {
+        if (!state.isAttacking || state.flingHappened) {
             break;
         }
 
