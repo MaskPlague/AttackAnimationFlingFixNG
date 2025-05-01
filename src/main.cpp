@@ -108,10 +108,13 @@ void SlowActorVelocity(RE::Actor *actor)
         }
     }
 }
+
 bool IsGameWindowFocused()
 {
-    static const HWND gameWindow = ::FindWindow(nullptr, L"Skyrim Special Edition");
-    return ::GetForegroundWindow() == gameWindow;
+    HWND foreground = ::GetForegroundWindow();
+    DWORD foregroundPID = 0;
+    ::GetWindowThreadProcessId(foreground, &foregroundPID);
+    return foregroundPID == ::GetCurrentProcessId();
 }
 
 void LoopSlowActorVelocity(RE::Actor *actor)
