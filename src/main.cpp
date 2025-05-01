@@ -22,6 +22,7 @@ struct ActorState
     bool flingHappened = false;
     bool isLooping = false;
     int animationType = 0;
+    std::vector<RE::NiPoint3> positions;
 };
 
 inline std::unordered_map<RE::FormID, ActorState> g_actorStates;
@@ -63,21 +64,45 @@ void SlowActorVelocity(RE::Actor *actor)
 
     if (magnitude > 500)
     {
+        for (int i = 0; i < 5; i++)
+        {
+            if (!actor)
+                return;
+        }
+        RE::NiPoint3 sum;
+        for (int i = 0; i < state.positions.size() - 1; ++i)
+        {
+            float dx = state.positions[i + 1].x - state.positions[i].x;
+            float dy = state.positions[i + 1].y - state.positions[i].y;
+
+            float length = std::sqrt(dx * dx + dy * dy);
+            if (length != 0.0f)
+            {
+                dx /= length;
+                dy /= length;
+                sum.x += dx;
+                sum.y += dy;
+            }
+        }
+        float sumLength = std::sqrt(sum.x * sum.x + sum.y * sum.y);
+        if (sumLength != 0.0f)
+        {
+            sum.x /= sumLength;
+            sum.y /= sumLength;
+        }
+        sum.z = 0.0f;
         if (auto *controller = actor->GetCharController(); controller)
         {
             state.flingHappened = true;
             logger::debug("In air and velocity: x{:.2f}, y{:.2f}, z{:.2f}", velocity.x, velocity.y, velocity.z);
-            RE::NiPoint3 impulse;
-            if (magnitude > 1300)
-                impulse = RE::NiPoint3(velocity.x * 0.01f, velocity.y * 0.01f, velocity.z * 0.2f);
-            else if (magnitude > 1000)
-                impulse = RE::NiPoint3(velocity.x * 0.015f, velocity.y * 0.015f, velocity.z * 0.2f);
-            else if (magnitude > 800)
-                impulse = RE::NiPoint3(velocity.x * 0.025f, velocity.y * 0.025f, velocity.z * 0.2f);
-            else
-                impulse = RE::NiPoint3(velocity.x * 0.03f, velocity.y * 0.03f, velocity.z * 0.2f);
-
+            if (sumLength == 0.0f)
+                sum = velocity / magnitude;
+            float zI = velocity.z * 0.2f;
+            if (zI > 5.0f)
+                zI *= 5.0f;
+            RE::NiPoint3 impulse = {sum.x * magnitude * 0.03f, sum.y * magnitude * 0.03f, zI};
             controller->SetLinearVelocityImpl(impulse);
+            state.positions.clear();
             logger::debug("Impulse set to: x{:.2f}, y{:.2f}, z{:.2f}", impulse.x, impulse.y, impulse.z);
             logger::info("Animation Fling Prevented for {}", actor->GetName());
         }
@@ -179,6 +204,7 @@ public:
             state.animationType = 0;
             state.isAttacking = false;
             state.isLooping = false;
+            state.positions.clear();
             logger::debug("Attack Finished for {}", holderName);
         }
 
