@@ -186,8 +186,10 @@ public:
             state.isAttacking = true;
             state.flingHappened = false;
             if (!state.isLooping)
-                LoopSlowActorVeocity(actor);
-            state.isLooping = true;
+            {
+                state.isLooping = true;
+                LoopSlowActorVelocity(actor);
+            }
             logger::debug("Attack Started for {}", holderName);
             if (event->tag == "PowerAttack_Start_end")
                 state.animationType = 1;
@@ -202,8 +204,10 @@ public:
         }
         else if (state.isAttacking && ((state.animationType == 1 && event->tag == "attackStop") || (state.animationType == 2 && event->payload == "$DMCO_Reset") ||
                                        (state.animationType == 3 && event->tag == "RollStop") || (state.animationType == 4 && event->tag == "TKDR_DodgeEnd") ||
-                                       (state.animationType == 5 && event->tag == "EnableBumper")))
+                                       (state.animationType == 5 && event->tag == "EnableBumper") || state.animationType == 0))
         {
+            if (state.animationType == 0)
+                logger::debug("Force ending LoopSlowActorVelocity");
             state.animationType = 0;
             state.isAttacking = false;
             state.isLooping = false;
