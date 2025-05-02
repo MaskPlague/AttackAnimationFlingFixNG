@@ -48,9 +48,8 @@ void SlowActorVelocity(RE::Actor *actor)
     auto &state = GetState(actor);
     if (!actor)
         return;
-    if (!actor->IsInMidair() && state.flingHappened)
+    if (state.flingHappened)
     {
-        state.flingHappened = false;
         return;
     }
     if (!actor->IsInMidair())
@@ -60,7 +59,7 @@ void SlowActorVelocity(RE::Actor *actor)
     actor->GetLinearVelocity(velocity);
     logger::trace("Velocity: X{}, Y{}", velocity.x, velocity.y);
     float magnitude = sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y));
-    logger::trace("Magnitude: {}", magnitude);
+    logger::debug("Magnitude: {}", magnitude);
 
     if (magnitude > 500)
     {
@@ -76,7 +75,7 @@ void SlowActorVelocity(RE::Actor *actor)
             float dy = state.positions[i + 1].y - state.positions[i].y;
 
             float length = std::sqrt(dx * dx + dy * dy);
-            if (length != 0.0f)
+            if (length != 0.0f && length < 200.0f)
             {
                 dx /= length;
                 dy /= length;
@@ -90,20 +89,20 @@ void SlowActorVelocity(RE::Actor *actor)
             sum.x /= sumLength;
             sum.y /= sumLength;
         }
-        sum.z = 0.0f;
         if (auto *controller = actor->GetCharController(); controller)
         {
             state.flingHappened = true;
             logger::debug("In air and velocity: x{:.2f}, y{:.2f}, z{:.2f}", velocity.x, velocity.y, velocity.z);
             if (sumLength == 0.0f)
                 sum = velocity / magnitude;
-            float zI = velocity.z * 0.2f;
+            float zI = velocity.z * 0.02f;
             if (zI > 5.0f)
                 zI *= 5.0f;
             RE::NiPoint3 impulse = {sum.x * magnitude * 0.03f, sum.y * magnitude * 0.03f, zI};
             controller->SetLinearVelocityImpl(impulse);
-            state.positions.clear();
             logger::debug("Impulse set to: x{:.2f}, y{:.2f}, z{:.2f}", impulse.x, impulse.y, impulse.z);
+            logger::debug("count {}", state.positions.size());
+            state.positions.clear();
             logger::info("Animation Fling Prevented for {}", actor->GetName());
         }
     }
@@ -180,31 +179,34 @@ public:
         logger::trace("{} Payload: {}", holderName, event->payload);
         logger::trace("{} Tag: {}", holderName, event->tag);
         if (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
-            event->tag == "RollTrigger" || event->tag == "TKDR_DodgeStart" ||
-            event->tag == "MCO_DisableSecondDodge")
+            event->tag == "RollTrigger" || event->tag == "SidestepTrigger" ||
+            event->tag == "TKDR_DodgeStart" || event->tag == "MCO_DisableSecondDodge")
         {
             state.isAttacking = true;
             state.flingHappened = false;
             if (!state.isLooping)
             {
+                state.positions.push_back(actor->GetPosition());
                 state.isLooping = true;
                 LoopSlowActorVelocity(actor);
             }
             logger::debug("Attack Started for {}", holderName);
-            if (event->tag == "PowerAttack_Start_end")
+            if (event->tag == "PowerAttack_Start_end") // Any Attack
                 state.animationType = 1;
-            else if (event->tag == "MCO_DodgeInitiate")
+            else if (event->tag == "MCO_DodgeInitiate") // DMCO
                 state.animationType = 2;
-            else if (event->tag == "RollTrigger")
+            else if (event->tag == "RollTrigger" || event->tag == "SidestepTrigger") // TUDMR
                 state.animationType = 3;
-            else if (event->tag == "TKDR_DodgeStart")
+            else if (event->tag == "TKDR_DodgeStart") // TK Dodge RE
                 state.animationType = 4;
-            else if (event->tag == "MCO_DisableSecondDodge")
+            else if (event->tag == "MCO_DisableSecondDodge") // Old DMCO
                 state.animationType = 5;
         }
-        else if (state.isAttacking && ((state.animationType == 1 && event->tag == "attackStop") || (state.animationType == 2 && event->payload == "$DMCO_Reset") ||
+        else if (state.isAttacking && ((state.animationType == 1 && event->tag == "attackStop") ||
+                                       (state.animationType == 2 && event->payload == "$DMCO_Reset") ||
                                        (state.animationType == 3 && event->tag == "RollStop") || (state.animationType == 4 && event->tag == "TKDR_DodgeEnd") ||
-                                       (state.animationType == 5 && event->tag == "EnableBumper") || state.animationType == 0))
+                                       (state.animationType == 5 && event->tag == "EnableBumper") ||
+                                       state.animationType == 0 || event->tag == "InterruptCast" || event->tag == "IdleStop" || event->tag == "JumpUp" || event->tag == "MTstate"))
         {
             if (state.animationType == 0)
                 logger::debug("Force ending LoopSlowActorVelocity");
@@ -213,6 +215,10 @@ public:
             state.isLooping = false;
             state.positions.clear();
             logger::debug("Attack Finished for {}", holderName);
+        }
+        else if (state.flingHappened && !actor->IsInMidair())
+        {
+            state.flingHappened = false;
         }
 
         return RE::BSEventNotifyControl::kContinue;
