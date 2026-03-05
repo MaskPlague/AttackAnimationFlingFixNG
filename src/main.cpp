@@ -99,10 +99,10 @@ namespace
                 float zI = velocity.z * 0.02f;
                 if (zI > 5.0f)
                     zI *= 5.0f;
-                RE::NiPoint3 impulse = {sum.x * magnitude * 0.03f, sum.y * magnitude * 0.03f, zI};
-                controller->SetLinearVelocityImpl(impulse);
-                logger::debug("Impulse set to: x{:.2f}, y{:.2f}, z{:.2f}", impulse.x, impulse.y, impulse.z);
-                logger::debug("count {}", state.positions.size());
+                RE::NiPoint3 newVel = {sum.x * magnitude * 0.03f, sum.y * magnitude * 0.03f, zI};
+                controller->SetLinearVelocityImpl(newVel);
+                logger::debug("Velocity set to: x{:.2f}, y{:.2f}, z{:.2f}", newVel.x, newVel.y, newVel.z);
+                logger::debug("Positions count {}", state.positions.size());
                 state.positions.clear();
                 logger::info("Animation Fling Prevented for {}", actor->GetName());
             }
