@@ -1,5 +1,3 @@
-
-
 namespace logger = SKSE::log;
 namespace
 {
@@ -177,8 +175,8 @@ namespace
             if (!stateCheck)
                 return RE::BSEventNotifyControl::kContinue;
             auto &state = GetState(actor);
-            logger::trace("{} Payload: {}", holderName, event->payload);
-            logger::trace("{} Tag: {}", holderName, event->tag);
+            // logger::trace("{} Payload: {}", holderName, event->payload.c_str());
+            // logger::trace("{} Tag: {}", holderName, event->tag.c_str());
             if (event->tag == "PowerAttack_Start_end" || event->tag == "MCO_DodgeInitiate" ||
                 event->tag == "RollTrigger" || event->tag == "SidestepTrigger" ||
                 event->tag == "TKDR_DodgeStart" || event->tag == "MCO_DisableSecondDodge" ||
@@ -241,13 +239,18 @@ namespace
         for (auto it = g_actorStates.begin(); it != g_actorStates.end();)
         {
             auto actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
-            if (!actor || actor->IsDead() || actor->IsDeleted() || !actor->IsInCombat() || actor->IsDisabled())
+            if (!actor)
             {
-                if (actor->IsPlayerRef())
-                {
-                    ++it;
-                    continue;
-                }
+                it = g_actorStates.erase(it);
+                continue;
+            }
+            if (actor->IsPlayerRef())
+            {
+                ++it;
+                continue;
+            }
+            if (actor->IsDead() || actor->IsDeleted() || !actor->IsInCombat() || actor->IsDisabled())
+            {
                 actor->RemoveAnimationGraphEventSink(AttackAnimationGraphEventSink::GetSingleton());
                 it = g_actorStates.erase(it);
             }
