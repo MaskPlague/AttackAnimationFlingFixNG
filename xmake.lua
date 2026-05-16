@@ -5,7 +5,7 @@ set_xmakever("2.8.2")
 includes("lib/commonlibsse-ng")
 
 -- set project
-set_project("AttackAnimationFlingFixNG ")
+set_project("AttackAnimationFlingFixNG")
 set_version("0.1.8")
 set_license("MIT")
 
@@ -25,13 +25,13 @@ add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode"})
 add_cxflags("/Zc:preprocessor")
 
 -- targets
-target("AnimationLedgeBlockNG")
+target("AttackAnimationFlingFixNG")
     -- add dependencies to target
     add_deps("commonlibsse-ng")
 
     -- add commonlibsse-ng plugin
     add_rules("commonlibsse-ng.plugin", {
-        name = "AnimationLedgeBlockNG",
+        name = "AttackAnimationFlingFixNG",
         author = "MaskPlague",
         description = "SKSE64 plugin using CommonLibSSE-NG"
     })
